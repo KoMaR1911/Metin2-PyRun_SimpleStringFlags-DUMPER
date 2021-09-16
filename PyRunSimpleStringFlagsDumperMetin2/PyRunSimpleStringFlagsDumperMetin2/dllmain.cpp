@@ -3,11 +3,12 @@
 #include "detours.h"
 #include <iostream>
 #include <io.h>
+#include "FindPattern.h"
 
 #pragma comment(lib, "detours.lib")
 
 typedef struct {
-	int cf_flags;  /* bitmask of CO_xxx flags relevant to future */
+	int cf_flags;  
 } PyCompilerFlags;
 typedef int(__cdecl*tPyRun_SimpleStringFlags)(const char *command, PyCompilerFlags *flags);
 
@@ -16,8 +17,9 @@ int __cdecl hkPyRun_SimpleStringFlags(const char *command, PyCompilerFlags *flag
 {
 	FILE * fp;
 
-	if (command && fopen_s(&fp, "C:\\dump.txt", "ab+") == 0)
+	if (command && fopen_s(&fp, "C:\\PythonDumpHook.txt", "ab+") == 0)
 	{
+		//MessageBoxA(nullptr, "Dumped", "Dumped", NULL);
 		fwrite(command, strlen(command), 1, fp);
 		fclose(fp);
 		printf("Dumped \n");
@@ -27,6 +29,25 @@ int __cdecl hkPyRun_SimpleStringFlags(const char *command, PyCompilerFlags *flag
 
 	return nPyRun_SimpleStringFlags(command, flags);
 }
+
+void FindPython()
+{
+	auto oPyRun = NULL;
+	if (GetModuleHandleA("python27.dll") == NULL)
+	{
+		oPyRun = PatternScanFast::FindPatternIDA("55 8B EC 68 ? ? ? ? E8 ? ? ? ? 83 C4 ? 85 C0 74 ? 50");
+	}
+	else {
+		oPyRun = (int)GetProcAddress(GetModuleHandleA("python27.dll"), "PyRun_SimpleStringFlags");
+	}
+		if (oPyRun != NULL) {
+			nPyRun_SimpleStringFlags = (tPyRun_SimpleStringFlags)DetourFunction((PBYTE)oPyRun, (PBYTE)hkPyRun_SimpleStringFlags);
+			MessageBoxA(nullptr, "Hooked PyRun_SimpleStringFlags!", "Found!", NULL);
+		}
+		else {
+			MessageBoxA(nullptr, "Offset not found! try to find correct pattern using x64dbg / IDA Pro!", "ERROR Not found!", NULL);
+		}
+	}
 
 
 BOOL APIENTRY DllMain(HMODULE hModule,
@@ -38,8 +59,7 @@ BOOL APIENTRY DllMain(HMODULE hModule,
 	{
 	case DLL_PROCESS_ATTACH:
 	{
-		auto oPyRun = tPyRun_SimpleStringFlags(GetProcAddress(GetModuleHandle(L"python27.dll"), "PyRun_SimpleStringFlags"));
-		nPyRun_SimpleStringFlags = (tPyRun_SimpleStringFlags)DetourFunction((PBYTE)oPyRun, (PBYTE)hkPyRun_SimpleStringFlags);
+		CreateThread(0, NULL, (LPTHREAD_START_ROUTINE)&FindPython, NULL, NULL, NULL);
 	}
 	case DLL_THREAD_ATTACH:
 	case DLL_THREAD_DETACH:
